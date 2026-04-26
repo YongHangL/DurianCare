@@ -1,0 +1,57 @@
+# =========================
+# Python virtual environment
+# =========================
+.venv/
+venv/
+env/
+
+# =========================
+# Python cache
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================
+# Dataset folders
+# =========================
+dataset/
+
+# =========================
+# Trained model files
+# =========================
+*.keras
+*.h5
+*.pth
+*.pt
+
+# =========================
+# Evaluation output
+# =========================
+model/evaluation_images/
+model/evaluation_results/
+
+# =========================
+# Uploaded images / user upload folder
+# =========================
+frontend/uploads/
+backend/uploads/
+uploads/
+
+# =========================
+# Debug / log files
+# =========================
+*.log
+prediction_debug.txt
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# PyCharm project settings
+# =========================
+.idea/
