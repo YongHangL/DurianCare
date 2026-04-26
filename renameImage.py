@@ -1,13 +1,13 @@
 import os
 
 # 🔧 CHANGE THIS PATH
-folder_path = r"C:\For UTEM\year4sem1\FYP\resources\kaggle2\DLD_FinalDataset_224_spit\train\PHOMOPSIS_LEAF_SPOT"
+folder_path = r"C:\For UTEM\year4sem1\FYP\project\dataset\validate\Phomopsis"
 
 # 🔧 CHANGE PREFIX
-prefix = "Train_Phom"
+prefix = "Val_Phomopsis"
 
 # 🔧 START NUMBER
-start_number = 598
+start_number = 1
 
 # =========================
 # STEP 1: GET FILE LIST

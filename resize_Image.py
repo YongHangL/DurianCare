@@ -1,8 +1,8 @@
 import cv2
 import os
 
-input_folder = r"C:\For UTEM\year4sem1\FYP\project\res_image\test\healthy"
-output_folder = r"C:\For UTEM\year4sem1\FYP\project\res_image\test\healthy"
+input_folder = r"C:\For UTEM\year4sem1\FYP\project\dataset\realWorld"
+output_folder = r"C:\For UTEM\year4sem1\FYP\project\dataset\realWorld"
 
 os.makedirs(output_folder, exist_ok=True)
 
