@@ -1,10 +1,11 @@
 import os
 
 # 🔧 CHANGE THIS PATH
-folder_path = r"C:\For UTEM\year4sem1\FYP\project\dataset\validate\Phomopsis"
+folder_path = r"C:\For UTEM\year4sem1\FYP\project\yoloDataset\images\val"
 
 # 🔧 CHANGE PREFIX
-prefix = "Val_Phomopsis"
+prefix = "val_leaf"
+files = [f for f in os.listdir(folder_path)]
 
 # 🔧 START NUMBER
 start_number = 1

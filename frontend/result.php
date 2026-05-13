@@ -1,386 +1,327 @@
 <?php
 session_start();
 include "db.php";
-
-// Allow either user_id or username session, to avoid login session mismatch
-if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
-    header("Location: loginPage.php");
-    exit();
-}
-
-if (!isset($_SESSION['result_data'])) {
-    header("Location: index.php");
-    exit();
-}
+if (!isset($_SESSION['user_id'])) { header("Location: loginPage.php"); exit(); }
+if (!isset($_SESSION['result_data'])) { header("Location: index.php"); exit(); }
 
 $data = $_SESSION['result_data'];
+$status = $data['status'] ?? "error"; $isSuccess = $data['isSuccess'] ?? false;
+$resultMessage = $data['resultMessage'] ?? ""; $disease = $data['disease'] ?? "";
+$confidence = $data['confidence'] ?? 0; $imageToShow = $data['imageToShow'] ?? "";
+$checkID = $data['check_id'] ?? ""; $probabilities = $data['probabilities'] ?? [];
+if (!empty($probabilities)) arsort($probabilities);
 
-$isSuccess = $data['isSuccess'] ?? false;
-$resultMessage = $data['resultMessage'] ?? "";
-$disease = $data['disease'] ?? "";
-$confidence = $data['confidence'] ?? 0;
-$imageToShow = $data['imageToShow'] ?? "";
-$probabilities = $data['probabilities'] ?? [];
-
-// Sort probability from highest to lowest
-if (!empty($probabilities)) {
-    arsort($probabilities);
-}
-
-$recommendation = "No recommendation found.";
-
-// Get treatment recommendation based on final prediction
+$recommendation = "Waiting for AI analysis...";
 if ($isSuccess && !empty($disease)) {
-    $sqlRec = "SELECT recommendation
-               FROM treatment_recom
-               WHERE disease_name = ?
-               LIMIT 1";
-
-    $stmtRec = $conn->prepare($sqlRec);
-    $stmtRec->bind_param("s", $disease);
-    $stmtRec->execute();
-    $resultRec = $stmtRec->get_result();
-
-    if ($resultRec && $resultRec->num_rows > 0) {
-        $rowRec = $resultRec->fetch_assoc();
-        $recommendation = $rowRec['recommendation'];
-    }
+    $stmt = $conn->prepare("SELECT recommendation FROM treatment_recom WHERE disease_name = ? LIMIT 1");
+    $stmt->bind_param("s", $disease); $stmt->execute();
+    $res = $stmt->get_result();
+    if ($res && $res->num_rows > 0) $recommendation = $res->fetch_assoc()['recommendation'];
 }
+$isPending = ($status === "pending");
+$isLowConfidence = ($isSuccess && (float)$confidence < 70);
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Prediction Result - DurianCare AI</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analysis Result - DurianCare AI</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: radial-gradient(circle at top left, #f8fafc 0%, #ecfdf5 100%); color: #0f172a; min-height: 100vh; }
+.page-shell { max-width: 1000px; margin: 0 auto; padding: 40px 20px 80px; }
 
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: Arial, Helvetica, sans-serif;
-    }
+.result-card {
+    background: #fff; border-radius: 32px; padding: 40px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; animation: fadeIn 0.5s ease;
+}
+@keyframes fadeIn { from{opacity:0; transform:scale(0.98);} to{opacity:1; transform:scale(1);} }
 
-    body {
-      background:
-        radial-gradient(circle at top left, #f8fff8 0%, #eef8f0 35%, #e7f7eb 100%);
-      color: #1f2d1f;
-      min-height: 100vh;
-    }
+.header-text h1 { font-size: 2.2rem; color: #064e3b; margin-bottom: 8px; font-weight: 800;}
+.header-text p { color: #475569; margin-bottom: 24px; font-size: 1.05rem;}
 
-    .page-shell {
-      max-width: 1180px;
-      margin: 0 auto;
-      padding: 0 20px;
-    }
+.status-box { padding: 16px 20px; border-radius: 16px; margin-bottom: 30px; font-weight: 600; font-size: 1.05rem; display: flex; align-items: center; gap: 10px;}
+.status-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+.status-warning { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.status-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
 
-    .result-section {
-      padding: 34px 0 70px;
-      display: flex;
-      justify-content: center;
-    }
+.grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: start; }
+.panel { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 24px; padding: 24px; }
+.panel h3 { color: #0f172a; margin-bottom: 16px; font-size: 1.2rem; font-weight: 700;}
 
-    .result-card {
-      width: 100%;
-      max-width: 980px;
-      background: #ffffff;
-      border-radius: 28px;
-      padding: 32px;
-      box-shadow: 0 18px 40px rgba(16, 70, 35, 0.12);
-      border: 1px solid #e2f0e6;
-    }
+.image-panel img { width: 100%; max-height: 380px; object-fit: cover; border-radius: 16px; box-shadow: 0 10px 20px rgba(0,0,0,0.05); }
 
-    .result-card h1 {
-      font-size: 2rem;
-      color: #174b2f;
-      margin-bottom: 10px;
-    }
+/* Animated AI Scanner */
+.scanner-wrap { display: flex; flex-direction: column; align-items: center; padding: 40px 20px; text-align: center;}
+.circle-progress {
+    --progress: 0deg; width: 160px; height: 160px; border-radius: 50%;
+    background: conic-gradient(#10B981 var(--progress), #e2e8f0 0deg);
+    display: grid; place-items: center; position: relative; margin-bottom: 20px;
+    box-shadow: 0 10px 25px rgba(16, 185, 129, 0.2);
+}
+.circle-progress::before { content: ""; position: absolute; width: 130px; height: 130px; border-radius: 50%; background: #fff; }
+.circle-inner { position: relative; z-index: 2; }
+.circle-percent { font-size: 2rem; font-weight: 800; color: #064e3b; }
+.circle-text { font-size: 0.9rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; animation: pulseText 1.5s infinite;}
+@keyframes pulseText { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
 
-    .subtext {
-      color: #58725f;
-      margin-bottom: 24px;
-      line-height: 1.7;
-    }
+.info-item { margin-bottom: 20px; }
+.info-label { display: block; font-size: 0.9rem; color: #64748b; margin-bottom: 8px; font-weight: 600; text-transform: uppercase;}
+.info-value { font-size: 1.1rem; color: #0f172a; font-weight: 600; line-height: 1.6; }
 
-    .status-box {
-      padding: 16px 18px;
-      border-radius: 16px;
-      margin-bottom: 24px;
-      font-weight: 700;
-    }
+.prob-list { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 16px; }
+.prob-list div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f1f5f9;}
+.prob-list div:last-child { border-bottom: none; }
+.prob-list span:last-child { color: #10B981; font-weight: 800;}
 
-    .status-success {
-      background: #edf9f0;
-      color: #1c6b39;
-      border: 1px solid #cfe8d6;
-    }
+.final-tag {
+    background: #10B981; color: #fff; padding: 12px 20px; border-radius: 14px;
+    display: inline-block; font-size: 1.25rem; font-weight: 800; box-shadow: 0 8px 15px rgba(16, 185, 129, 0.2);
+}
+.final-tag.low { background: #f59e0b; box-shadow: 0 8px 15px rgba(245, 158, 11, 0.2); }
 
-    .status-error {
-      background: #fff3f3;
-      color: #b33a3a;
-      border: 1px solid #efcccc;
-    }
+.conf-bar-wrap { margin-top: 12px; width: 100%; background: #e2e8f0; border-radius: 999px; height: 14px; overflow: hidden; }
+.conf-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #10B981, #34d399); border-radius: 999px; transition: width 1s cubic-bezier(0.4, 0, 0.2, 1); }
+.conf-bar.low { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
 
-    .result-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 26px;
-      align-items: start;
-      margin-top: 20px;
-    }
+.recom-panel { margin-top: 30px; background: #fff; border: 2px solid #e2e8f0; padding: 24px; border-radius: 20px;}
+.recom-panel h3 { color: #064e3b; margin-bottom: 12px; font-size: 1.3rem;}
+.recom-text { font-size: 1.05rem; color: #334155; line-height: 1.8; white-space: pre-line; }
 
-    .image-box,
-    .info-box,
-    .recommendation-box {
-      background: #f8fff9;
-      border: 1px solid #e0efe4;
-      border-radius: 20px;
-      padding: 22px;
-    }
+.actions { display: flex; gap: 16px; margin-top: 40px; flex-wrap: wrap;}
+.btn {
+    display: inline-flex; justify-content: center; align-items: center;
+    flex: 1; text-align: center; text-decoration: none; border-radius: 16px;
+    padding: 16px 24px; font-weight: 700; font-size: 1.05rem;
+    transition: all 0.3s ease; border: none; cursor: pointer;
+}
+.btn-primary { background: #10B981; color: #fff; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.2); }
+.btn-primary:hover { transform: translateY(-3px); box-shadow: 0 15px 25px rgba(16, 185, 129, 0.3); }
+.btn-secondary { background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; }
+.btn-secondary:hover { background: #e2e8f0; transform: translateY(-3px); }
 
-    .image-box h3,
-    .info-box h3,
-    .recommendation-box h3 {
-      color: #174b2f;
-      margin-bottom: 16px;
-      font-size: 1.18rem;
-    }
+/* Glassmorphism Popup */
+.popup-overlay {
+    position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px);
+    display: flex; justify-content: center; align-items: center; padding: 20px; z-index: 9999; opacity: 1; transition: 0.3s;
+}
+.popup-overlay.hidden { opacity: 0; pointer-events: none; }
+.popup-card {
+    background: #fff; border-radius: 32px; padding: 40px; max-width: 480px; width: 100%;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.25); transform: scale(1); transition: 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.popup-overlay.hidden .popup-card { transform: scale(0.9); }
+.pop-icon { font-size: 3rem; margin-bottom: 12px; text-align: center;}
+.popup-card h2 { color: #92400e; text-align: center; margin-bottom: 12px; font-size: 1.6rem; font-weight: 800;}
+.popup-card p { color: #475569; text-align: center; line-height: 1.6; margin-bottom: 20px;}
 
-    .image-box img {
-      width: 100%;
-      max-height: 360px;
-      object-fit: contain;
-      border-radius: 16px;
-      border: 1px solid #dcebdd;
-      background: #fff;
-    }
+/* UPDATED: Example Image Box Inside Popup using portrait container */
+.popup-guide {
+    display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; background: #f8fafc;
+    padding: 16px; border-radius: 20px; margin-bottom: 24px; border: 1px solid #e2e8f0; text-align: left;
+}
+.guide-sample-popup {
+    width: 80px; height: 110px; border-radius: 12px; overflow: hidden;
+    border: 2px solid #cbd5e1; box-shadow: 0 4px 10px rgba(0,0,0,0.08); background: #fff;
+    flex-shrink: 0;
+}
+.guide-sample-popup img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.popup-guide-text h4 { color: #064e3b; margin-bottom: 4px; font-size: 0.95rem; font-weight: 700; }
+.popup-guide-text p { color: #475569; font-size: 0.85rem; line-height: 1.5; margin-bottom: 0; text-align: left;}
 
-    .info-item {
-      margin-bottom: 18px;
-    }
+.popup-buttons { display: flex; flex-direction: column; gap: 12px; }
+.pop-btn { background: #f59e0b; color: #fff; width: 100%; }
+.pop-btn:hover { background: #d97706; transform: translateY(-2px); }
+.pop-close { background: transparent; color: #64748b; border: 2px solid #cbd5e1; width: 100%; }
+.pop-close:hover { background: #f1f5f9; color: #0f172a; transform: translateY(-2px); }
 
-    .info-label {
-      display: block;
-      font-size: 0.92rem;
-      color: #6a856f;
-      margin-bottom: 6px;
-      font-weight: 700;
-    }
+.hidden-area { display: none !important; }
 
-    .info-value {
-      font-size: 1.08rem;
-      color: #1b5531;
-      font-weight: 800;
-      line-height: 1.6;
-      word-break: break-word;
-    }
+@media (max-width: 768px) { .grid-layout { grid-template-columns: 1fr; } }
+@media (max-width: 560px) {
+    .result-card, .popup-card { padding: 24px; border-radius: 24px;}
+    .header-text h1 { font-size: 1.8rem; }
+    .actions { flex-direction: column; }
 
-    .probability-list {
-      background: #ffffff;
-      border: 1px solid #dcebdd;
-      border-radius: 14px;
-      padding: 14px 16px;
-      line-height: 1.8;
-    }
-
-    .final-result {
-      background: #edf9f0;
-      border: 1px solid #cfe8d6;
-      color: #174b2f;
-      border-radius: 14px;
-      padding: 12px 14px;
-      display: inline-block;
-      font-size: 1.15rem;
-    }
-
-    .recommendation-box {
-      margin-top: 26px;
-    }
-
-    .recommendation-text {
-      font-size: 1rem;
-      color: #35553d;
-      line-height: 1.8;
-      background: #ffffff;
-      border: 1px solid #dcebdd;
-      border-radius: 14px;
-      padding: 16px;
-      white-space: pre-line;
-    }
-
-    .confidence-bar-wrap {
-      margin-top: 10px;
-      width: 100%;
-      background: #e7f4ea;
-      border-radius: 999px;
-      height: 16px;
-      overflow: hidden;
-      border: 1px solid #d6e8da;
-    }
-
-    .confidence-bar {
-      height: 100%;
-      background: linear-gradient(90deg, #2d8c4d, #1f8a45);
-      border-radius: 999px;
-    }
-
-    .actions {
-      display: flex;
-      gap: 14px;
-      flex-wrap: wrap;
-      margin-top: 28px;
-    }
-
-    .btn {
-      display: inline-block;
-      text-decoration: none;
-      border: none;
-      border-radius: 12px;
-      padding: 13px 22px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: 0.2s ease;
-    }
-
-    .btn-primary {
-      background: #1f8a45;
-      color: #fff;
-    }
-
-    .btn-primary:hover {
-      background: #166b34;
-    }
-
-    .btn-secondary {
-      background: #edf6ef;
-      color: #23583a;
-      border: 1px solid #cfe3d3;
-    }
-
-    .btn-secondary:hover {
-      background: #e1f1e5;
-    }
-
-    @media (max-width: 900px) {
-      .result-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 560px) {
-      .page-shell {
-        padding: 0 14px;
-      }
-
-      .result-card {
-        padding: 22px 18px;
-        border-radius: 22px;
-      }
-
-      .actions {
-        flex-direction: column;
-      }
-
-      .btn {
-        width: 100%;
-        text-align: center;
-      }
-    }
-  </style>
+    /* Mobile adjustments for the popup guide */
+    .popup-guide { grid-template-columns: 1fr; text-align: center; gap: 14px;}
+    .guide-sample-popup { width: 90px; height: 120px; margin: 0 auto; }
+    .popup-guide-text h4, .popup-guide-text p { text-align: center; }
+}
+</style>
 </head>
-
 <body>
-
 <?php include 'header.php'; ?>
 
-<div class="page-shell">
-  <section class="result-section">
-    <div class="result-card">
+<div class="popup-overlay hidden" id="lowConfPopup">
+  <div class="popup-card">
+    <div class="pop-icon">⚠️</div>
+    <h2>Unclear Image Detected</h2>
+    <p>The AI confidence score is below 70%. The prediction may be inaccurate.</p>
 
-      <h1>Prediction Result</h1>
-      <p class="subtext">
-        View the uploaded image, prediction probabilities, final prediction, confidence score, and treatment recommendation below.
-      </p>
-
-      <?php if ($isSuccess): ?>
-
-        <div class="status-box status-success">
-          Image uploaded and analyzed successfully.
-        </div>
-
-        <div class="result-grid">
-
-          <div class="image-box">
-            <h3>Uploaded Image</h3>
-            <img src="<?php echo htmlspecialchars($imageToShow); ?>" alt="Uploaded Leaf Image">
-          </div>
-
-          <div class="info-box">
-            <h3>Analysis Result</h3>
-
-            <div class="info-item">
-              <span class="info-label">Prediction Probabilities</span>
-
-              <div class="info-value probability-list">
-                <?php if (!empty($probabilities)): ?>
-                  <?php foreach ($probabilities as $className => $prob): ?>
-                    <?php echo htmlspecialchars($className); ?>:
-                    <?php echo number_format((float)$prob, 2); ?>%<br>
-                  <?php endforeach; ?>
-                <?php else: ?>
-                  No probability data found.
-                <?php endif; ?>
-              </div>
-            </div>
-
-            <div class="info-item">
-              <span class="info-label">Final Prediction</span>
-              <span class="info-value final-result">
-                <?php echo htmlspecialchars($disease); ?> | <?php echo number_format((float)$confidence, 2); ?>%
-              </span>
-            </div>
-
-            <div class="info-item">
-              <span class="info-label">Confidence</span>
-              <span class="info-value">
-                <?php echo number_format((float)$confidence, 2); ?>%
-              </span>
-
-              <div class="confidence-bar-wrap">
-                <div class="confidence-bar"
-                     style="width: <?php echo min(100, max(0, (float)$confidence)); ?>%;">
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        <div class="recommendation-box">
-          <h3>Treatment Recommendation</h3>
-          <div class="recommendation-text">
-            <?php echo htmlspecialchars($recommendation); ?>
-          </div>
-        </div>
-
-      <?php else: ?>
-
-        <div class="status-box status-error">
-          <?php echo htmlspecialchars($resultMessage); ?>
-        </div>
-
-      <?php endif; ?>
-
-      <div class="actions">
-        <a href="index.php" class="btn btn-primary">Back to Upload</a>
-        <a href="dashboard.php" class="btn btn-secondary">View Dashboard</a>
+    <div class="popup-guide">
+      <div class="guide-sample-popup">
+        <img src="image/sample.jpg" alt="Correct Example" onerror="this.src='https://via.placeholder.com/100?text=Sample'">
       </div>
-
+      <div class="popup-guide-text">
+        <h4>How to scan properly:</h4>
+        <p>Ensure your photo is bright, clear, and focuses tightly on a single durian leaf.</p>
+      </div>
     </div>
-  </section>
+
+    <div class="popup-buttons">
+      <a href="index.php#detection" class="btn pop-btn">Upload Clearer Image</a>
+      <button class="btn pop-close" onclick="document.getElementById('lowConfPopup').classList.add('hidden')">View Results Anyway</button>
+    </div>
+  </div>
 </div>
 
+<div class="page-shell">
+  <div class="result-card">
+    <div class="header-text">
+      <h1>Analysis Report</h1>
+      <p>Detailed AI breakdown of your durian leaf's health.</p>
+    </div>
+
+    <div id="statusBox" class="status-box <?php echo $isPending ? 'status-warning' : ($isSuccess ? ($isLowConfidence ? 'status-warning' : 'status-success') : 'status-error'); ?>">
+      <?php
+        if ($isPending) echo "⏳ Analyzing image using neural networks...";
+        elseif ($isSuccess && $isLowConfidence) echo "⚠️ Low confidence result. Treat as uncertain.";
+        elseif ($isSuccess) echo "✅ Analysis complete. High confidence prediction.";
+        else echo "❌ " . htmlspecialchars($resultMessage);
+      ?>
+    </div>
+
+    <?php if (!empty($imageToShow)): ?>
+      <div class="grid-layout">
+        <div class="panel image-panel">
+          <h3>Scanned Subject</h3>
+          <img src="<?php echo htmlspecialchars($imageToShow); ?>" alt="Uploaded Leaf">
+        </div>
+
+        <div class="panel">
+          <h3>Diagnostics</h3>
+
+          <div id="loadingArea" class="scanner-wrap <?php echo $isPending ? '' : 'hidden-area'; ?>">
+            <div class="circle-progress" id="circleProg">
+              <div class="circle-inner">
+                <div class="circle-percent" id="circlePerc">0%</div>
+                <div class="circle-text">Processing</div>
+              </div>
+            </div>
+            <p style="color: #64748b; font-size: 0.95rem;">Extracting features...</p>
+          </div>
+
+          <div id="resultArea" class="<?php echo $isSuccess ? '' : 'hidden-area'; ?>">
+            <div class="info-item">
+              <span class="info-label">Primary Finding</span>
+              <div class="final-tag <?php echo $isLowConfidence ? 'low' : ''; ?>" id="finalPred">
+                <?php echo htmlspecialchars($disease); ?>
+              </div>
+            </div>
+
+            <div class="info-item">
+              <span class="info-label">Confidence Level</span>
+              <div class="info-value" id="confText"><?php echo number_format((float)$confidence, 1); ?>%</div>
+              <div class="conf-bar-wrap">
+                <div class="conf-bar <?php echo $isLowConfidence ? 'low' : ''; ?>" id="confBar" style="width: <?php echo min(100, max(0, (float)$confidence)); ?>%;"></div>
+              </div>
+            </div>
+
+            <div class="info-item" style="margin-top: 24px;">
+              <span class="info-label">Probability Distribution</span>
+              <div class="prob-list" id="probList">
+                <?php if (!empty($probabilities)): foreach ($probabilities as $c => $p): ?>
+                  <div><span><?php echo htmlspecialchars($c); ?></span><span><?php echo number_format((float)$p, 1); ?>%</span></div>
+                <?php endforeach; else: ?> <div>No data</div> <?php endif; ?>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="recom-panel">
+        <h3>💊 Action Plan</h3>
+        <div class="recom-text" id="recomText"><?php echo nl2br(htmlspecialchars($recommendation)); ?></div>
+      </div>
+    <?php endif; ?>
+
+    <div class="actions">
+      <a href="index.php#detection" class="btn btn-primary">Scan Another Leaf</a>
+      <a href="dashboard.php" class="btn btn-secondary">Go to Dashboard</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  const isPending = <?php echo $isPending ? 'true' : 'false'; ?>;
+  const checkID = "<?php echo htmlspecialchars((string)$checkID); ?>";
+  const circleProg = document.getElementById("circleProg");
+  const circlePerc = document.getElementById("circlePerc");
+  let simProgress = 0, timer;
+
+  function updateCircle(p) {
+    if(circleProg) {
+      circleProg.style.setProperty("--progress", (p * 3.6) + "deg");
+      circlePerc.textContent = Math.round(p) + "%";
+    }
+  }
+
+  if (isPending) {
+    timer = setInterval(() => { if (simProgress < 90) { simProgress += Math.random() * 8; updateCircle(simProgress); } }, 300);
+
+    const fd = new FormData(); fd.append("check_id", checkID);
+    fetch("run_prediction.php", { method: "POST", body: fd })
+    .then(r => r.json())
+    .then(d => {
+      clearInterval(timer); updateCircle(100);
+      setTimeout(() => {
+        document.getElementById("loadingArea").classList.add("hidden-area");
+        if (d.status === "success") {
+          document.getElementById("resultArea").classList.remove("hidden-area");
+          document.getElementById("finalPred").textContent = d.disease;
+          document.getElementById("confText").textContent = parseFloat(d.confidence).toFixed(1) + "%";
+
+          let cb = document.getElementById("confBar");
+          cb.style.width = d.confidence + "%";
+
+          let html = "";
+          Object.entries(d.probabilities).sort((a,b)=>b[1]-a[1]).forEach(([k,v]) => {
+            html += `<div><span>${k}</span><span>${parseFloat(v).toFixed(1)}%</span></div>`;
+          });
+          document.getElementById("probList").innerHTML = html;
+          document.getElementById("recomText").innerHTML = d.recommendation.replace(/\n/g, "<br>");
+
+          let sb = document.getElementById("statusBox");
+          if(d.confidence < 70) {
+            document.getElementById("finalPred").classList.add("low");
+            cb.classList.add("low");
+            sb.className = "status-box status-warning";
+            sb.textContent = "⚠️ Low confidence result. Treat as uncertain.";
+            document.getElementById("lowConfPopup").classList.remove("hidden");
+          } else {
+            sb.className = "status-box status-success";
+            sb.textContent = "✅ Analysis complete. High confidence prediction.";
+          }
+        } else {
+          document.getElementById("statusBox").className = "status-box status-error";
+          document.getElementById("statusBox").textContent = "❌ " + d.message;
+        }
+      }, 600);
+    }).catch(e => {
+        clearInterval(timer);
+        document.getElementById("loadingArea").classList.add("hidden-area");
+        document.getElementById("statusBox").className = "status-box status-error";
+        document.getElementById("statusBox").textContent = "❌ Network/Server Error occurred.";
+    });
+  } else {
+      <?php if ($isLowConfidence): ?>
+          document.getElementById("lowConfPopup").classList.remove("hidden");
+      <?php endif; ?>
+  }
+</script>
 </body>
 </html>
