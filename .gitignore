@@ -1,57 +1,60 @@
-# =========================
-# Python virtual environment
-# =========================
+# Uploaded user images: ignore files, keep folder
+frontend/uploads/*
+!frontend/uploads/.gitkeep
+
+# Keep frontend image assets
+!frontend/image/
+!frontend/image/**
+
+# Version 5 deploy models only
+model/*
+!model/version5-changeMethodUseYolo/
+model/version5-changeMethodUseYolo/*
+!model/version5-changeMethodUseYolo/model_version5.pth
+
+# YOLO: ignore outputs, keep only best.pt
+!model/version5-changeMethodUseYolo/yolo_runs/
+model/version5-changeMethodUseYolo/yolo_runs/**/*
+!model/version5-changeMethodUseYolo/yolo_runs/**/
+!model/version5-changeMethodUseYolo/yolo_runs/**/weights/
+!model/version5-changeMethodUseYolo/yolo_runs/**/weights/best.pt
+
+# Ignore all other model formats unless forced added
+*.pt
+*.pth
+*.keras
+*.h5
+*.onnx
+
+# Re-allow deploy models
+!model/version5-changeMethodUseYolo/model_version5.pth
+!model/version5-changeMethodUseYolo/yolo_runs/**/weights/best.pt
+
+# Dataset folders
+dataset*/
+yoloDataset/
+dataset_v5_cropped/
+dataset_v5_cropped-old/
+backup-real_image/
+real_image/
+
+# Outputs
+dataset_chart*/
+duplicate_image_report*.csv
+*.xlsx
+*.csv
+*.log
+prediction_debug.txt
+
+# Python
+__pycache__/
+*.pyc
 .venv/
 venv/
 env/
 
-# =========================
-# Python cache
-# =========================
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# =========================
-# Dataset folders
-# =========================
-dataset/
-
-# =========================
-# Trained model files
-# =========================
-*.keras
-*.h5
-*.pth
-*.pt
-
-# =========================
-# Evaluation output
-# =========================
-model/evaluation_images/
-model/evaluation_results/
-
-# =========================
-# Uploaded images / user upload folder
-# =========================
-frontend/uploads/
-backend/uploads/
-uploads/
-
-# =========================
-# Debug / log files
-# =========================
-*.log
-prediction_debug.txt
-
-# =========================
-# OS files
-# =========================
+# IDE/System
+.idea/
+.vscode/
 .DS_Store
 Thumbs.db
-
-# =========================
-# PyCharm project settings
-# =========================
-.idea/
