@@ -36,6 +36,8 @@ RUN python3 -m pip install --break-system-packages --no-cache-dir \
 # Install Python requirements
 RUN python3 -m pip install --break-system-packages --no-cache-dir -r requirements.txt
 
+RUN docker-php-ext-install mysqli pdo pdo_mysql
+
 # Make upload folder writable
 RUN mkdir -p /var/www/html/frontend/uploads \
     && chown -R www-data:www-data /var/www/html/frontend/uploads \
