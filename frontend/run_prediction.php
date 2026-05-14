@@ -134,13 +134,18 @@ if (!$imageFullPath || !file_exists($imageFullPath)) {
 
 $stmtImage->close();
 
-// Python prediction settings
-// Local/Render safe path.
-// You can override Python executable using Render env variable PYTHON_BIN if needed.
-$python = getenv("PYTHON_BIN") ?: "python3";
-$scriptPath = realpath(__DIR__ . "/../model/version5-changeMethodUseYolo/predictConvNeXt_V5.py");
+// Check if running on local XAMPP
+$isLocalhost = ($_SERVER['HTTP_HOST'] === 'localhost' || $_SERVER['HTTP_HOST'] === '127.0.0.1');
 
-echo "Script Path: " . $scriptPath; // Debugging line to check the path
+if ($isLocalhost) {
+    // === LOCAL XAMPP SETTINGS ===
+    $python = "C:\\For UTEM\\year4sem1\\FYP\\project\\.venv\\Scripts\\python.exe";
+    $scriptPath = "C:\\For UTEM\\year4sem1\\FYP\\project\\model\\version5-changeMethodUseYolo\\predictConvNeXt_V5.py";
+} else {
+    // === RENDER PRODUCTION SETTINGS ===
+    $python = getenv("PYTHON_BIN") ?: "python3";
+    $scriptPath = realpath(__DIR__ . "/../model/version5-changeMethodUseYolo/predictConvNeXt_V5.py");
+}
 
 if (!$scriptPath || !file_exists($scriptPath)) {
     jsonResponse([
@@ -149,7 +154,15 @@ if (!$scriptPath || !file_exists($scriptPath)) {
     ]);
 }
 
-$command = escapeshellcmd($python) . " " . escapeshellarg($scriptPath) . " " . escapeshellarg($imageFullPath) . " 2>&1";
+// 1. Get the exact folder where the Python script lives
+$modelDir = dirname($scriptPath);
+$scriptName = basename($scriptPath);
+
+// 2. Tell PHP to securely change its own directory to the model folder
+chdir($modelDir);
+
+// 3. Execute Python directly
+$command = escapeshellarg($python) . " " . escapeshellarg($scriptName) . " " . escapeshellarg($imageFullPath) . " 2>&1";
 $output = shell_exec($command);
 $output = trim((string)$output);
 
@@ -160,8 +173,11 @@ $lines = preg_split('/\r\n|\r|\n/', $output);
 $successLine = "";
 
 foreach ($lines as $line) {
-    if (strpos($line, "SUCCESS|") === 0) {
-        $successLine = $line;
+    // Find where "SUCCESS|" is, even if there are hidden characters before it
+    $pos = strpos($line, "SUCCESS|");
+    if ($pos !== false) {
+        // Cut out the hidden characters and keep everything from "SUCCESS|" onwards
+        $successLine = substr($line, $pos);
         break;
     }
 }
