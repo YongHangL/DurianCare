@@ -327,6 +327,7 @@ $isLowConfidence = ($isSuccess && (float)$confidence < 70);
 <body>
     <?php include 'header.php'; ?>
 
+    <!-- Add the low-confidence warning popup -->
     <div class="popup-overlay hidden" id="lowConfPopup">
         <div class="popup-card">
             <div class="pop-icon">⚠️</div>
@@ -398,4 +399,109 @@ $isLowConfidence = ($isSuccess && (float)$confidence < 70);
                                 <span class="info-label">Confidence Level</span>
                                 <div class="info-value" id="confText"><?php echo number_format((float)$confidence, 1); ?>%</div>
                                 <div class="conf-bar-wrap">
-                                    <div class="conf-bar <?php echo $isLowConfidence ? '
+<div class="conf-bar-wrap">
+                                    <div class="conf-bar <?php echo $isLowConfidence ? 'low' : ''; ?>" id="confBar" style="width: <?php echo $isSuccess ? max(0, min(100, (float)$confidence)) : 0; ?>%;"></div>
+                                </div>
+                            </div>
+
+                            <div class="info-item">
+                                <span class="info-label">Probability Breakdown</span>
+                                <div class="prob-list" id="probList">
+                                    <?php if ($isSuccess && !empty($probabilities)): ?>
+                                        <?php foreach ($probabilities as $name => $prob): ?>
+                                            <div>
+                                                <span><?php echo htmlspecialchars($name); ?></span>
+                                                <span><?php echo number_format((float)$prob, 1); ?>%</span>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <div><span>Awaiting analysis...</span><span>--</span></div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="recom-panel <?php echo $isSuccess ? '' : 'hidden-area'; ?>" id="recomArea">
+                    <h3>Treatment & Recommendations</h3>
+                    <div class="recom-text" id="recomText"><?php echo nl2br(htmlspecialchars($recommendation)); ?></div>
+                </div>
+            <?php endif; ?> <div class="actions">
+                <a href="index.php#detection" class="btn btn-primary">Scan Another Leaf</a>
+                <a href="dashboard.php" class="btn btn-secondary">View Dashboard</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // Trigger popup if confidence is low
+            <?php if ($isSuccess && $isLowConfidence): ?>
+                document.getElementById('lowConfPopup').classList.remove('hidden');
+            <?php endif; ?>
+
+            // Handle the loading animation and AJAX request if status is pending
+            <?php if ($isPending): ?>
+                let progress = 0;
+                const circleProg = document.getElementById('circleProg');
+                const circlePerc = document.getElementById('circlePerc');
+                const statusBox = document.getElementById('statusBox');
+
+                // Animate the circle
+                const interval = setInterval(() => {
+                    progress += 5; // Degrees
+                    if (progress > 320) progress = 320; // Hold at ~90% until backend finishes
+                    circleProg.style.setProperty('--progress', progress + 'deg');
+                    circlePerc.innerText = Math.floor((progress / 360) * 100) + '%';
+                }, 100);
+
+                // Call the prediction Python script via PHP
+                fetch('run_prediction.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'check_id=<?php echo htmlspecialchars($checkID); ?>'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    clearInterval(interval);
+
+                    if (data.status === 'success') {
+                        // Success! Fill the circle and reload to show results
+                        circleProg.style.setProperty('--progress', '360deg');
+                        circlePerc.innerText = '100%';
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 600);
+                    } else {
+                        // ERROR: Stop the loop and show what went wrong
+                        circleProg.style.setProperty('--progress', '0deg');
+                        circleProg.style.background = '#fee2e2'; // Light red error circle
+                        circlePerc.innerText = 'Fail';
+                        circlePerc.style.color = '#dc2626';
+
+                        statusBox.className = 'status-box status-error';
+                        statusBox.innerHTML = '❌ <b>Analysis Failed:</b> ' + data.message;
+
+                        // Check if there is debug info from Python
+                        if(data.debug) {
+                            console.error("Python Output:", data.debug);
+                            alert("AI failed: " + data.message + "\nCheck browser console for Python details.");
+                        }
+                    }
+                })
+                .catch(error => {
+                    clearInterval(interval);
+                    console.error('Network/Server Error:', error);
+
+                    circleProg.style.setProperty('--progress', '0deg');
+                    circlePerc.innerText = 'Error';
+
+                    statusBox.className = 'status-box status-error';
+                    statusBox.innerHTML = '❌ Connection to server failed.';
+                });
+            <?php endif; ?>
+        });
+    </script>
+</body>
+</html>
