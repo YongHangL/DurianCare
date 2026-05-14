@@ -12,7 +12,7 @@ from torchvision.models import convnext_tiny
 # =========================
 # Settings - Version 5
 # =========================
-MODEL_PATH = r"C:\For UTEM\year4sem1\FYP\project\model\version5-changeMethodUseYolo\model_version5.pth"
+MODEL_PATH = r"/model/version5-changeMethodUseYolo/model_version5.pth"
 
 # YOLO model used for leaf localization
 # Change this path to your trained YOLO leaf detection model path
