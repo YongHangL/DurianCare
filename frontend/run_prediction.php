@@ -4,15 +4,19 @@ include "db.php";
 
 header("Content-Type: application/json");
 
-if (!isset($_SESSION['user_id'])) {
-    echo json_encode([
-        "status" => "error",
-        "message" => "User not logged in."
-    ]);
+function jsonResponse($data) {
+    echo json_encode($data);
     exit();
 }
 
-$userID = $_SESSION['user_id'];
+if (!isset($_SESSION['user_id'])) {
+    jsonResponse([
+        "status" => "error",
+        "message" => "User not logged in."
+    ]);
+}
+
+$userID = (int)$_SESSION['user_id'];
 
 $checkID = 0;
 
@@ -23,15 +27,13 @@ if (isset($_POST['check_id'])) {
 }
 
 if ($checkID <= 0) {
-    echo json_encode([
+    jsonResponse([
         "status" => "error",
         "message" => "Invalid check ID."
     ]);
-    exit();
 }
 
-// Check if prediction already exists.
-// This prevents duplicate prediction if user refreshes result.php.
+// Check if prediction already exists
 $sqlExisting = "SELECT
                     p.algal_prob,
                     p.blight_prob,
@@ -48,6 +50,14 @@ $sqlExisting = "SELECT
                 LIMIT 1";
 
 $stmtExisting = $conn->prepare($sqlExisting);
+
+if (!$stmtExisting) {
+    jsonResponse([
+        "status" => "error",
+        "message" => "Database prepare failed: " . $conn->error
+    ]);
+}
+
 $stmtExisting->bind_param("ii", $checkID, $userID);
 $stmtExisting->execute();
 $existingResult = $stmtExisting->get_result();
@@ -70,7 +80,7 @@ if ($existingResult && $existingResult->num_rows > 0) {
     $_SESSION['result_data']["confidence"] = (float)$row["final_confidence"];
     $_SESSION['result_data']["probabilities"] = $probabilities;
 
-    echo json_encode([
+    jsonResponse([
         "status" => "success",
         "message" => "Prediction already completed.",
         "disease" => $row["final_prediction"],
@@ -78,8 +88,9 @@ if ($existingResult && $existingResult->num_rows > 0) {
         "probabilities" => $probabilities,
         "recommendation" => $row["recommendation"] ?? "No recommendation found."
     ]);
-    exit();
 }
+
+$stmtExisting->close();
 
 // Get uploaded image path
 $sqlImage = "SELECT image_path
@@ -89,16 +100,23 @@ $sqlImage = "SELECT image_path
              LIMIT 1";
 
 $stmtImage = $conn->prepare($sqlImage);
+
+if (!$stmtImage) {
+    jsonResponse([
+        "status" => "error",
+        "message" => "Database prepare failed: " . $conn->error
+    ]);
+}
+
 $stmtImage->bind_param("ii", $checkID, $userID);
 $stmtImage->execute();
 $imageResult = $stmtImage->get_result();
 
 if (!$imageResult || $imageResult->num_rows == 0) {
-    echo json_encode([
+    jsonResponse([
         "status" => "error",
         "message" => "Uploaded image record not found."
     ]);
-    exit();
 }
 
 $imageRow = $imageResult->fetch_assoc();
@@ -108,22 +126,34 @@ $serverImagePath = __DIR__ . DIRECTORY_SEPARATOR . str_replace("/", DIRECTORY_SE
 $imageFullPath = realpath($serverImagePath);
 
 if (!$imageFullPath || !file_exists($imageFullPath)) {
-    echo json_encode([
+    jsonResponse([
         "status" => "error",
         "message" => "Uploaded image file not found."
     ]);
-    exit();
 }
 
-// Python prediction
-$python = "C:\\For UTEM\\year4sem1\\FYP\\project\\.venv\\Scripts\\python.exe";
-$script = "C:\\For UTEM\\year4sem1\\FYP\\project\\model\\version5-changeMethodUseYolo\\predictConvNeXt_V5.py";
+$stmtImage->close();
 
-$command = "\"$python\" \"$script\" \"$imageFullPath\" 2>&1";
+// Python prediction settings
+// Local/Render safe path.
+// You can override Python executable using Render env variable PYTHON_BIN if needed.
+$python = getenv("PYTHON_BIN") ?: "python3";
+
+$scriptPath = realpath(__DIR__ . "/../model/version5-changeMethodUseYolo/predictConvNeXt_V5.py");
+
+if (!$scriptPath || !file_exists($scriptPath)) {
+    jsonResponse([
+        "status" => "error",
+        "message" => "Prediction script not found. Check predictConvNeXt_V5.py path."
+    ]);
+}
+
+$command = escapeshellcmd($python) . " " . escapeshellarg($scriptPath) . " " . escapeshellarg($imageFullPath) . " 2>&1";
 $output = shell_exec($command);
-$output = trim($output);
+$output = trim((string)$output);
 
-file_put_contents("prediction_debug.txt", $output);
+// Save debug output for deployment checking
+file_put_contents(__DIR__ . "/prediction_debug.txt", $output);
 
 $lines = preg_split('/\r\n|\r|\n/', $output);
 $successLine = "";
@@ -136,22 +166,22 @@ foreach ($lines as $line) {
 }
 
 if (empty($successLine)) {
-    echo json_encode([
+    jsonResponse([
         "status" => "error",
-        "message" => "Prediction failed. Check prediction_debug.txt."
+        "message" => "Prediction failed. Check frontend/prediction_debug.txt.",
+        "debug" => substr($output, 0, 1000)
     ]);
-    exit();
 }
 
 $jsonText = substr($successLine, strlen("SUCCESS|"));
 $predictionData = json_decode($jsonText, true);
 
 if (!$predictionData || !isset($predictionData['probabilities'])) {
-    echo json_encode([
+    jsonResponse([
         "status" => "error",
-        "message" => "Prediction JSON format invalid. Check prediction_debug.txt."
+        "message" => "Prediction JSON format invalid. Check frontend/prediction_debug.txt.",
+        "debug" => substr($output, 0, 1000)
     ]);
-    exit();
 }
 
 $probabilities = $predictionData['probabilities'];
@@ -161,14 +191,30 @@ $blightProb = isset($probabilities['Blight']) ? (float)$probabilities['Blight'] 
 $healthyProb = isset($probabilities['Healthy']) ? (float)$probabilities['Healthy'] : 0;
 $phomopsisProb = isset($probabilities['Phomopsis']) ? (float)$probabilities['Phomopsis'] : 0;
 
-$disease = $predictionData['final_prediction'];
-$confidence = (float)$predictionData['final_confidence'];
+$disease = $predictionData['final_prediction'] ?? "";
+$confidence = isset($predictionData['final_confidence']) ? (float)$predictionData['final_confidence'] : 0;
 
+if ($disease === "") {
+    jsonResponse([
+        "status" => "error",
+        "message" => "Prediction result missing final_prediction."
+    ]);
+}
+
+// Save prediction into database
 $sqlPrediction = "INSERT INTO prediction
     (check_id, UserID, algal_prob, blight_prob, healthy_prob, phomopsis_prob, final_prediction, final_confidence)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
 $stmtPrediction = $conn->prepare($sqlPrediction);
+
+if (!$stmtPrediction) {
+    jsonResponse([
+        "status" => "error",
+        "message" => "Database prepare failed: " . $conn->error
+    ]);
+}
+
 $stmtPrediction->bind_param(
     "iiddddsd",
     $checkID,
@@ -182,12 +228,13 @@ $stmtPrediction->bind_param(
 );
 
 if (!$stmtPrediction->execute()) {
-    echo json_encode([
+    jsonResponse([
         "status" => "error",
         "message" => "Failed to save prediction: " . $stmtPrediction->error
     ]);
-    exit();
 }
+
+$stmtPrediction->close();
 
 // Get treatment recommendation
 $recommendation = "No recommendation found.";
@@ -198,13 +245,18 @@ $sqlRec = "SELECT recommendation
            LIMIT 1";
 
 $stmtRec = $conn->prepare($sqlRec);
-$stmtRec->bind_param("s", $disease);
-$stmtRec->execute();
-$resultRec = $stmtRec->get_result();
 
-if ($resultRec && $resultRec->num_rows > 0) {
-    $rowRec = $resultRec->fetch_assoc();
-    $recommendation = $rowRec['recommendation'];
+if ($stmtRec) {
+    $stmtRec->bind_param("s", $disease);
+    $stmtRec->execute();
+    $resultRec = $stmtRec->get_result();
+
+    if ($resultRec && $resultRec->num_rows > 0) {
+        $rowRec = $resultRec->fetch_assoc();
+        $recommendation = $rowRec['recommendation'];
+    }
+
+    $stmtRec->close();
 }
 
 arsort($probabilities);
@@ -215,7 +267,7 @@ $_SESSION['result_data']["disease"] = $disease;
 $_SESSION['result_data']["confidence"] = $confidence;
 $_SESSION['result_data']["probabilities"] = $probabilities;
 
-echo json_encode([
+jsonResponse([
     "status" => "success",
     "message" => "Prediction completed.",
     "disease" => $disease,
@@ -223,5 +275,4 @@ echo json_encode([
     "probabilities" => $probabilities,
     "recommendation" => $recommendation
 ]);
-exit();
 ?>
