@@ -138,8 +138,9 @@ $stmtImage->close();
 // Local/Render safe path.
 // You can override Python executable using Render env variable PYTHON_BIN if needed.
 $python = getenv("PYTHON_BIN") ?: "python3";
-
 $scriptPath = realpath(__DIR__ . "/../model/version5-changeMethodUseYolo/predictConvNeXt_V5.py");
+
+echo "Script Path: " . $scriptPath; // Debugging line to check the path
 
 if (!$scriptPath || !file_exists($scriptPath)) {
     jsonResponse([
